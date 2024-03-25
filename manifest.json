@@ -1,0 +1,10 @@
+{
+  "domain": "dobiss",
+  "name": "Dobiss Domotics",
+  "documentation": "https://dobiss.be",
+  "dependencies": [],
+  "codeowners": ["@OpenJeDi", "@avlemos"],
+  "requirements": [],
+  "config_flow": true,
+  "version": "1.0.1"
+}
