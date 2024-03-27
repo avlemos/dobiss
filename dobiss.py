@@ -129,6 +129,10 @@ class DobissSystem:
         retry = True
         num_retries = 0
 
+        if self.socket is None:
+            _LOGGER.debug(f"We are not ready yet to sendData")
+            return False
+
         # while retry:
         try:
             self.socket.sendall(data)
@@ -161,7 +165,7 @@ class DobissSystem:
 
         numRetries = 0
 
-        while (len(self.recvBuffer) < totalSize) and (numRetries < MAX_NUM_RETRIES):
+        while (len(self.recvBuffer) < totalSize) and (numRetries < MAX_NUM_RETRIES) and self.socket is not None:
             try:
                 received_data = self.socket.recv(RECV_SIZE)
 
