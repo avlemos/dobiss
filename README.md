@@ -1,4 +1,5 @@
 ![](https://github.com/avlemos/dobiss/actions/workflows/validate.yaml/badge.svg)
+![](https://github.com/avlemos/dobiss/actions/workflows/hassfest.yaml/badge.svg)
 
 this is a fork from [OpenJeDi/HomeAssistantFiles](https://github.com/OpenJeDi/HomeAssistantFiles) without the configuration files (thank you [@OpenJeDi](https://github.com/OpenJeDi) for doing 99.9% of the work).
 
