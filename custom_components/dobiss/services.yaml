@@ -1,8 +1,8 @@
 # Services for Dobiss Domotics
 
 # Service ID
-importInstallation:
+#importInstallation:
   # Service name as shown in UI
-  name: Import Dobiss installation
+#  name: Import Dobiss installation
   # Description of the service
-  description: Refreshes the imported Dobiss Domotics installation.
+#  description: Refreshes the imported Dobiss Domotics installation.
