@@ -6,5 +6,6 @@
   "codeowners": ["@OpenJeDi", "@avlemos"],
   "requirements": [],
   "config_flow": true,
-  "version": "1.0.1"
+  "version": "1.0.1",
+  "issue_tracker": "https://github.com/avlemos/dobiss/issues"
 }
