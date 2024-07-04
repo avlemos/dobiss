@@ -65,10 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     await setupCoordinator(hass, host, port, update_interval)
 
-    for component in PLATFORMS:
-        hass.async_create_task(
-            hass.config_entries.async_forward_entry_setup(entry, component)
-        )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Register service to re-import installation
     coordinator = hass.data[DOMAIN]["coordinator"]
