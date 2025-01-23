@@ -1,6 +1,5 @@
-![](https://github.com/avlemos/dobiss/actions/workflows/validate.yaml/badge.svg)
-![](https://github.com/avlemos/dobiss/actions/workflows/hassfest.yaml/badge.svg)
-
+[![HACS Compliance](https://github.com/avlemos/dobiss/actions/workflows/validate.yaml/badge.svg "HACS Compliance")]([https://www.markdownguide.org](https://github.com/avlemos/dobiss/actions/workflows/validate.yaml))
+[![Validate with hassfest](https://github.com/avlemos/dobiss/actions/workflows/hassfest.yaml/badge.svg "hassfest Compliance")]([https://www.markdownguide.org](https://github.com/avlemos/dobiss/actions/workflows/hassfest.yaml)) 
 
 # Intro
 
