@@ -5,8 +5,7 @@ from .dobiss import DobissSystem
 from .const import DOMAIN
 # import asyncio
 
-from homeassistant.components.light import SUPPORT_BRIGHTNESS, ATTR_BRIGHTNESS, LightEntity, LightEntityFeature, \
-    ColorMode
+from homeassistant.components.light import ColorMode, ATTR_BRIGHTNESS, LightEntity, LightEntityFeature
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,7 +45,7 @@ class HomeAssistantDobissLight(CoordinatorEntity, LightEntity):
             return LightEntityFeature.FLASH | LightEntityFeature.TRANSITION
         else:
             # TODO: what else then?
-            return LightEntityFeature.FLASH | LightEntityFeature.TRANSITION | SUPPORT_BRIGHTNESS
+            return LightEntityFeature.FLASH | LightEntityFeature.TRANSITION | ColorMode.BRIGHTNESS
 
     @property
     def unique_id(self):
