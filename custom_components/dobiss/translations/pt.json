@@ -1,0 +1,42 @@
+{
+    "config": {
+        "flow_title": "Controlador Dobiss LAN descoberto em {host}:{port}",
+        "step": {
+            "user": {
+                "description": "Introduza o endereço IP e a porta do controlador Dobiss LAN.",
+                "data": {
+                    "host": "Endereço IP do host",
+                    "port": "Porta para ligação",
+                    "scan_interval": "Intervalo em que obtemos os estados de saída"
+                }
+            }
+        },
+        "error": {
+            "invalid_host": "Não conseguimos ligar ao host"
+        },
+        "abort": {
+            "cannot_connect": "Não foi possível ligar ao controlador LAN",
+            "already_configured": "Este host já está configurado"
+        }
+    },
+    "options": {
+        "flow_title": "Configurar controlador Dobiss LAN",
+        "step": {
+            "user": {
+                "description": "Introduza o endereço IP e a porta do controlador Dobiss LAN.",
+                "data": {
+                    "host": "Endereço IP do host",
+                    "port": "Porta para ligação",
+                    "scan_interval": "Intervalo em que obtemos os estados de saída"
+                }
+            }
+        },
+        "error": {
+            "invalid_host": "Não conseguimos ligar ao host"
+        },
+        "abort": {
+            "cannot_connect": "Não foi possível ligar ao controlador LAN",
+            "already_configured": "Este host já está configurado"
+        }
+    }
+}
