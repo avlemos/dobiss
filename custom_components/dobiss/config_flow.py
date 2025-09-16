@@ -18,6 +18,9 @@ import voluptuous as vol
 
 
 # Config GUI
+from homeassistant.core import callback
+
+# Options Flow is registered on the ConfigFlow class
 class DobissConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """The config flow for the Dobiss Domotics integration."""
 
@@ -27,14 +30,10 @@ class DobissConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         return await setupStep(self, user_input, True, "user")
 
-
-from homeassistant.core import callback
-
-# Options Flow
-@staticmethod
-@callback
-def async_get_options_flow(config_entry):
-    return DobissOptionsFlowHandler(config_entry)
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return DobissOptionsFlowHandler(config_entry)
 
 
 class DobissOptionsFlowHandler(config_entries.OptionsFlow):
