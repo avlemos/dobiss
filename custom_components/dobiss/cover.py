@@ -35,34 +35,16 @@ def _pair_covers(outputs: List[Dict]) -> List[Dict]:
 
     Strategy:
     - Prefer pairing by (moduleAddress, groupIndex), assuming Dobiss assigns the
-      same groupIndex to the Up/Down of a single physical cover.
+      same groupIndex to the Up/Down of a single physical cover. Support multiple
+      covers sharing the same groupIndex by pairing greedily within each key.
     - If that doesn't yield a pair, fall back to name-based heuristic:
-      strip a trailing " up"/" down" suffix (case-insensitive) and pair by base name.
+      strip a trailing " up"/" down" suffix (case-insensitive) and pair by base name,
+      keeping per-module groupings and supporting duplicate names.
     - As a last resort, any single unpaired Up or Down becomes a one-direction
       cover entity (you will only be able to drive the available direction).
     """
-    ups: Dict[Tuple[int, int], Dict] = {}
-    downs: Dict[Tuple[int, int], Dict] = {}
+    from collections import defaultdict, deque
 
-    # First pass: index by (moduleAddress, groupIndex)
-    for out in outputs:
-        if out.get("type") == DobissSystem.OutputType.Up:
-            ups[(out["moduleAddress"], out["groupIndex"])] = out
-        elif out.get("type") == DobissSystem.OutputType.Down:
-            downs[(out["moduleAddress"], out["groupIndex"])] = out
-
-    covers: List[Dict] = []
-
-    processed_keys = set()
-    for key, up in ups.items():
-        if key in processed_keys:
-            continue
-        down = downs.get(key)
-        if down:
-            processed_keys.add(key)
-            covers.append(_build_cover_descriptor(up, down))
-
-    # Add any remaining by name heuristic
     def norm_name(n: str) -> str:
         n = (n or "").strip().lower()
         for suffix in (" up", " down"):
@@ -70,25 +52,89 @@ def _pair_covers(outputs: List[Dict]) -> List[Dict]:
                 return n[: -len(suffix)].strip()
         return n
 
-    # Collect leftovers
-    leftover_ups = [u for k, u in ups.items() if k not in processed_keys]
-    leftover_downs = [d for k, d in downs.items() if k not in processed_keys]
+    # First pass: index by (moduleAddress, groupIndex) and keep all entries per key
+    ups_map: Dict[Tuple[int, int], List[Dict]] = defaultdict(list)
+    downs_map: Dict[Tuple[int, int], List[Dict]] = defaultdict(list)
 
-    name_index_up: Dict[str, Dict] = {norm_name(u["name"]): u for u in leftover_ups}
-    name_index_down: Dict[str, Dict] = {norm_name(d["name"]): d for d in leftover_downs}
+    for out in outputs:
+        if out.get("type") == DobissSystem.OutputType.Up:
+            ups_map[(out["moduleAddress"], out["groupIndex"])].append(out)
+        elif out.get("type") == DobissSystem.OutputType.Down:
+            downs_map[(out["moduleAddress"], out["groupIndex"])].append(out)
 
-    matched_names = set(name_index_up.keys()) & set(name_index_down.keys())
-    for base in matched_names:
-        covers.append(_build_cover_descriptor(name_index_up[base], name_index_down[base]))
-        # remove so they don't get added as single-direction later
-        name_index_up.pop(base, None)
-        name_index_down.pop(base, None)
+    covers: List[Dict] = []
+
+    # Greedy pairing within each (module, groupIndex)
+    leftover_ups: List[Dict] = []
+    leftover_downs: List[Dict] = []
+
+    all_keys = set(ups_map.keys()) | set(downs_map.keys())
+    for key in all_keys:
+        ups_list = ups_map.get(key, [])
+        downs_list = downs_map.get(key, [])
+        if ups_list and downs_list:
+            # Use name-based pairing first within the key
+            ups_by_name: Dict[str, deque] = defaultdict(deque)
+            downs_by_name: Dict[str, deque] = defaultdict(deque)
+            for u in sorted(ups_list, key=lambda x: x.get("index", 0)):
+                ups_by_name[norm_name(u.get("name"))].append(u)
+            for d in sorted(downs_list, key=lambda x: x.get("index", 0)):
+                downs_by_name[norm_name(d.get("name"))].append(d)
+
+            matched_names = set(ups_by_name.keys()) & set(downs_by_name.keys())
+            for nm in sorted(matched_names):
+                while ups_by_name[nm] and downs_by_name[nm]:
+                    u = ups_by_name[nm].popleft()
+                    d = downs_by_name[nm].popleft()
+                    covers.append(_build_cover_descriptor(u, d))
+
+            # Collect remaining in lists by index order to pair loosely
+            remaining_ups = [u for q in ups_by_name.values() for u in q]
+            remaining_downs = [d for q in downs_by_name.values() for d in q]
+            remaining_ups.sort(key=lambda x: x.get("index", 0))
+            remaining_downs.sort(key=lambda x: x.get("index", 0))
+
+            # Pair by closest indices greedily
+            iu = id = 0
+            while iu < len(remaining_ups) and id < len(remaining_downs):
+                u = remaining_ups[iu]
+                d = remaining_downs[id]
+                covers.append(_build_cover_descriptor(u, d))
+                iu += 1
+                id += 1
+
+            # Any remainder goes to global leftovers
+            leftover_ups.extend(remaining_ups[iu:])
+            leftover_downs.extend(remaining_downs[id:])
+        else:
+            # Move all to leftovers if only one direction exists under this key
+            leftover_ups.extend(ups_list)
+            leftover_downs.extend(downs_list)
+
+    # Cross-key name-based pairing while preserving module boundary and supporting duplicates
+    from collections import defaultdict as dd
+    up_index: Dict[Tuple[int, str], deque] = dd(deque)
+    down_index: Dict[Tuple[int, str], deque] = dd(deque)
+
+    for u in sorted(leftover_ups, key=lambda x: (x["moduleAddress"], x.get("index", 0))):
+        up_index[(u["moduleAddress"], norm_name(u.get("name")))].append(u)
+    for d in sorted(leftover_downs, key=lambda x: (x["moduleAddress"], x.get("index", 0))):
+        down_index[(d["moduleAddress"], norm_name(d.get("name")))].append(d)
+
+    common_keys = set(up_index.keys()) & set(down_index.keys())
+    for k in sorted(common_keys):
+        uq = up_index[k]
+        dq = down_index[k]
+        while uq and dq:
+            covers.append(_build_cover_descriptor(uq.popleft(), dq.popleft()))
 
     # Single-direction entities for any remaining
-    for u in name_index_up.values():
-        covers.append(_build_cover_descriptor(u, None))
-    for d in name_index_down.values():
-        covers.append(_build_cover_descriptor(None, d))
+    for uq in up_index.values():
+        while uq:
+            covers.append(_build_cover_descriptor(uq.popleft(), None))
+    for dq in down_index.values():
+        while dq:
+            covers.append(_build_cover_descriptor(None, dq.popleft()))
 
     return covers
 
