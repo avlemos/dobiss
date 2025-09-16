@@ -3,7 +3,7 @@ import time
 import sys
 import asyncio
 
-DEFAULT_IP = "10.1.100.114"
+DEFAULT_IP = "192.168.1.118"
 DEFAULT_PORT = 10001
 
 
