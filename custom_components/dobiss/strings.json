@@ -20,14 +20,14 @@
         }
     },
     "options": {
-        "flow_title": "Setup Dobiss LAN controller",
+        "flow_title": "Dobiss Domotics options",
         "step": {
-            "user": {
-                "description": "Enter the host and port of the Dobiss LAN controller.",
+            "init": {
+                "description": "Adjust integration options for the Dobiss LAN controller.",
                 "data": {
                     "host": "The host IP address",
                     "port": "The port to connect to",
-                    "scan_interval": "The interval in which we get the output states"
+                    "scan_interval": "Scan interval (seconds)"
                 }
             }
         },

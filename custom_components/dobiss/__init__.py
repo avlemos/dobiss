@@ -53,8 +53,9 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up Dobiss from a config entry."""
-    host = entry.data[CONF_HOST]
-    port = entry.data[CONF_PORT]
+    # Prefer options for connection params if present
+    host = entry.options.get(CONF_HOST, entry.data[CONF_HOST])
+    port = entry.options.get(CONF_PORT, entry.data[CONF_PORT])
 
     # Prefer options (set via Options Flow), then data, then default
     scan_seconds = entry.options.get(CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
@@ -81,6 +82,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     # Listen for options updates to adjust polling interval without re-adding
     async def _update_listener(hass: HomeAssistant, updated_entry: ConfigEntry):
+        # Apply scan interval change
         new_scan_seconds = updated_entry.options.get(
             CONF_SCAN_INTERVAL,
             updated_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
@@ -89,6 +91,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         if coordinator.update_interval != new_interval:
             _LOGGER.info(f"Updating Dobiss polling interval to {new_scan_seconds}s via Options")
             coordinator.update_interval = new_interval
+
+        # Apply host/port changes if any
+        new_host = updated_entry.options.get(CONF_HOST, updated_entry.data.get(CONF_HOST))
+        new_port = updated_entry.options.get(CONF_PORT, updated_entry.data.get(CONF_PORT))
+        if (new_host and new_port) and (new_host != coordinator.dobiss.host or new_port != coordinator.dobiss.port):
+            _LOGGER.info(f"Updating Dobiss connection to {new_host}:{new_port} via Options")
+            try:
+                # Ensure any existing connection is closed
+                coordinator.dobiss.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+            # Replace DobissSystem with new connection parameters
+            coordinator.dobiss = DobissSystem(new_host, new_port)
+            # Trigger a refresh to validate new connection lazily
+            await coordinator.async_request_refresh()
 
     entry.async_on_unload(entry.add_update_listener(_update_listener))
 

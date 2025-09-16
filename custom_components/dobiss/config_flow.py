@@ -42,18 +42,30 @@ class DobissOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         if user_input is not None:
-            # Store only options (do not modify data)
+            # Store options (do not modify data here)
             return self.async_create_entry(title="", data={
-                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL]
+                CONF_HOST: user_input[CONF_HOST],
+                CONF_PORT: user_input[CONF_PORT],
+                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
             })
 
-        # Default to existing option, then data, then global default
-        current = self.config_entry.options.get(
+        # Defaults: prefer existing options, then data, then global defaults
+        current_host = self.config_entry.options.get(
+            CONF_HOST,
+            self.config_entry.data.get(CONF_HOST, ""),
+        )
+        current_port = self.config_entry.options.get(
+            CONF_PORT,
+            self.config_entry.data.get(CONF_PORT, DEFAULT_PORT),
+        )
+        current_scan = self.config_entry.options.get(
             CONF_SCAN_INTERVAL,
             self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
         )
         data_schema = {
-            vol.Optional(CONF_SCAN_INTERVAL, default=current): int
+            vol.Required(CONF_HOST, default=current_host): str,
+            vol.Optional(CONF_PORT, default=current_port): int,
+            vol.Optional(CONF_SCAN_INTERVAL, default=current_scan): int,
         }
         return self.async_show_form(step_id="init", data_schema=vol.Schema(data_schema))
 
