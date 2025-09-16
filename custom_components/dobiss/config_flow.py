@@ -18,6 +18,9 @@ import voluptuous as vol
 
 
 # Config GUI
+from homeassistant.core import callback
+
+# Options Flow is registered on the ConfigFlow class
 class DobissConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """The config flow for the Dobiss Domotics integration."""
 
@@ -27,16 +30,44 @@ class DobissConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         return await setupStep(self, user_input, True, "user")
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return DobissOptionsFlowHandler(config_entry)
 
-# TODO Options Flow
-# @staticmethod
-# @callback
-# def async_get_options_flow(config_entry):
-#     return DobissOptionsFlowHandler()
 
-# class DobissOptionsFlowHandler(config_entries.OptionsFlow):
-#     async def async_step_init(self, user_input=None):
-#         return await setupStep(self, user_input, False, "init")
+class DobissOptionsFlowHandler(config_entries.OptionsFlow):
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            # Store options (do not modify data here)
+            return self.async_create_entry(title="", data={
+                CONF_HOST: user_input[CONF_HOST],
+                CONF_PORT: user_input[CONF_PORT],
+                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
+            })
+
+        # Defaults: prefer existing options, then data, then global defaults
+        current_host = self.config_entry.options.get(
+            CONF_HOST,
+            self.config_entry.data.get(CONF_HOST, ""),
+        )
+        current_port = self.config_entry.options.get(
+            CONF_PORT,
+            self.config_entry.data.get(CONF_PORT, DEFAULT_PORT),
+        )
+        current_scan = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+        data_schema = {
+            vol.Required(CONF_HOST, default=current_host): str,
+            vol.Optional(CONF_PORT, default=current_port): int,
+            vol.Optional(CONF_SCAN_INTERVAL, default=current_scan): int,
+        }
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(data_schema))
 
 
 async def setupStep(flow, user_input, check_unique=True, step_name="user"):

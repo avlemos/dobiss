@@ -10,7 +10,6 @@ from .dobiss import DobissSystem
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
-from homeassistant.core_config import Config
 # from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 # import homeassistant.helpers.config_validation as cv
@@ -54,15 +53,19 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up Dobiss from a config entry."""
-    host = entry.data[CONF_HOST]
-    port = entry.data[CONF_PORT]
-    update_interval = timedelta(seconds=entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+    # Prefer options for connection params if present
+    host = entry.options.get(CONF_HOST, entry.data[CONF_HOST])
+    port = entry.options.get(CONF_PORT, entry.data[CONF_PORT])
 
-    _LOGGER.info(f"Setting up Dobiss Control entry with data {str(entry.data)}")
+    # Prefer options (set via Options Flow), then data, then default
+    scan_seconds = entry.options.get(CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+    update_interval = timedelta(seconds=scan_seconds)
+
+    _LOGGER.info(f"Setting up Dobiss Control entry with data {str(entry.data)} and options {str(entry.options)}")
 
     # Create from config entry
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data;
+    hass.data[DOMAIN][entry.entry_id] = entry.data
 
     await setupCoordinator(hass, host, port, update_interval)
 
@@ -72,11 +75,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     coordinator = hass.data[DOMAIN]["coordinator"]
 
     async def handle_importInstallation(call):
-        print("Importing Dobiss installation")
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, coordinator.importInstallation)
+        _LOGGER.info("Importing Dobiss installation via service call")
+        await coordinator.importInstallation()
 
     hass.services.async_register(DOMAIN, "importInstallation", handle_importInstallation)
+
+    # Listen for options updates to adjust polling interval without re-adding
+    async def _update_listener(hass: HomeAssistant, updated_entry: ConfigEntry):
+        # Apply scan interval change
+        new_scan_seconds = updated_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            updated_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+        new_interval = timedelta(seconds=new_scan_seconds)
+        if coordinator.update_interval != new_interval:
+            _LOGGER.info(f"Updating Dobiss polling interval to {new_scan_seconds}s via Options")
+            coordinator.update_interval = new_interval
+
+        # Apply host/port changes if any
+        new_host = updated_entry.options.get(CONF_HOST, updated_entry.data.get(CONF_HOST))
+        new_port = updated_entry.options.get(CONF_PORT, updated_entry.data.get(CONF_PORT))
+        if (new_host and new_port) and (new_host != coordinator.dobiss.host or new_port != coordinator.dobiss.port):
+            _LOGGER.info(f"Updating Dobiss connection to {new_host}:{new_port} via Options")
+            try:
+                # Ensure any existing connection is closed
+                coordinator.dobiss.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+            # Replace DobissSystem with new connection parameters
+            coordinator.dobiss = DobissSystem(new_host, new_port)
+            # Trigger a refresh to validate new connection lazily
+            await coordinator.async_request_refresh()
+
+    entry.async_on_unload(entry.add_update_listener(_update_listener))
 
     return True
 
@@ -142,15 +173,13 @@ class DobissDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.info("Importing Dobiss installation...")
         await self.dobiss.connect()
         await self.dobiss.importFullInstallation()
+        # Release connection so other clients (e.g., Dobiss Pro app) can use the controller
+        self.dobiss.disconnect()
         _LOGGER.info("Importing Dobiss installation done")
 
     async def async_setup(self):
         """Setup in the background"""
-        loop = asyncio.get_running_loop()
-        # result = await loop.run_in_executor(None, self.importInstallation)
-        result = await self.importInstallation()
-        print('default thread pool', result)
-
+        await self.importInstallation()
         self.setupCompleted = True
 
     async def _async_update_data(self):
@@ -164,8 +193,13 @@ class DobissDataUpdateCoordinator(DataUpdateCoordinator):
         # Note: asyncio.TimeoutError and aiohttp.ClientError are already
         # handled by the data update coordinator.
         async with async_timeout.timeout(10):
-            # Note: this is blocking
+            # Connect, poll, and disconnect to avoid holding the controller exclusively
             _LOGGER.debug("Requesting all statuses...")
-            await self.dobiss.requestAllStatus()
+            await self.dobiss.connect()
+            try:
+                await self.dobiss.requestAllStatus()
+            finally:
+                # Ensure we release the connection for other apps
+                self.dobiss.disconnect()
             _LOGGER.debug("Requesting all statuses done")
             return self.dobiss.values

@@ -1,8 +1,7 @@
 """Constants for Dobiss integration"""
 
 DOMAIN = "dobiss"
-# TODO ADD cover for up/down outputs
-PLATFORMS = ["light", "fan", "switch"]
+PLATFORMS = ["light", "fan", "switch", "cover"]
 
 DEFAULT_PORT = 10001
 DEFAULT_SCAN_INTERVAL = 10

@@ -1,6 +1,5 @@
 """Dobiss Fan Control"""
 import logging
-import voluptuous as vol
 from .dobiss import DobissSystem
 from .const import DOMAIN
 
@@ -55,22 +54,39 @@ class HomeAssistantDobissFan(CoordinatorEntity, FanEntity):
         return self._name
 
     @property
+    def device_info(self):
+        """Return device info to group all entities under the Dobiss controller."""
+        host = getattr(self.dobiss, 'host', 'dobiss')
+        port = getattr(self.dobiss, 'port', None)
+        ident = f"{host}:{port}" if port is not None else str(host)
+        return {
+            "identifiers": {(DOMAIN, ident)},
+            "name": f"Dobiss Controller {host}",
+            "manufacturer": "Dobiss",
+        }
+
+    @property
     def is_on(self):
         """Return true if the fan is on."""
-        val = self.coordinator.data[self._fan['moduleAddress']][self._fan['index']]
-        return (val > 0)
+        mod = self._fan['moduleAddress']
+        idx = self._fan['index']
+        mod_vals = self.coordinator.data.get(mod)
+        if not mod_vals or idx >= len(mod_vals):
+            return False
+        val = mod_vals[idx]
+        return val > 0
 
     async def async_turn_on(self, **kwargs):
         """Instruct the fan to turn on.
         """
-        self.dobiss.setOn(self._fan['moduleAddress'], self._fan['index'])
+        await self.dobiss.setOn(self._fan['moduleAddress'], self._fan['index'])
 
         # Poll states
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
         """Instruct the fan to turn off."""
-        self.dobiss.setOff(self._fan['moduleAddress'], self._fan['index'])
+        await self.dobiss.setOff(self._fan['moduleAddress'], self._fan['index'])
 
         # Poll states
         await self.coordinator.async_request_refresh()
