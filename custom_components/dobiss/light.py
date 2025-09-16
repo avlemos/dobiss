@@ -41,11 +41,9 @@ class HomeAssistantDobissLight(CoordinatorEntity, LightEntity):
 
     @property
     def supported_features(self):
-        if self.dobiss.modules[self._light['moduleAddress']]['type'] == DobissSystem.ModuleType.Relais:
-            return LightEntityFeature.FLASH | LightEntityFeature.TRANSITION
-        else:
-            # TODO: what else then?
-            return LightEntityFeature.FLASH | LightEntityFeature.TRANSITION | ColorMode.BRIGHTNESS
+        # Brightness is not a feature flag in HA; it is declared via supported_color_modes
+        # Only expose valid feature flags here.
+        return LightEntityFeature.FLASH | LightEntityFeature.TRANSITION
 
     @property
     def unique_id(self):
@@ -84,17 +82,27 @@ class HomeAssistantDobissLight(CoordinatorEntity, LightEntity):
         brightness control.
         """
         _LOGGER.debug("async_turn_on")
-        pct = int(kwargs.get(ATTR_BRIGHTNESS, 255) * 100 / 255)
-        await self.dobiss.setOn(self._light['moduleAddress'], self._light['index'], pct)
+        is_relay = self.dobiss.modules[self._light['moduleAddress']]['type'] == DobissSystem.ModuleType.Relais
+        if is_relay:
+            # Relays are on/off only; always turn on to 100%
+            await self.dobiss.setOn(self._light['moduleAddress'], self._light['index'], 100)
+        else:
+            pct = int(kwargs.get(ATTR_BRIGHTNESS, 255) * 100 / 255)
+            await self.dobiss.setOn(self._light['moduleAddress'], self._light['index'], pct)
         await self.coordinator.async_request_refresh()
 
     @property
     def supported_color_modes(self):
-        return [ColorMode.ONOFF]
+        is_relay = self.dobiss.modules[self._light['moduleAddress']]['type'] == DobissSystem.ModuleType.Relais
+        if is_relay:
+            return {ColorMode.ONOFF}
+        # Dimmer: expose brightness support
+        return {ColorMode.BRIGHTNESS}
 
     @property
     def color_mode(self):
-        return ColorMode.ONOFF
+        is_relay = self.dobiss.modules[self._light['moduleAddress']]['type'] == DobissSystem.ModuleType.Relais
+        return ColorMode.ONOFF if is_relay else ColorMode.BRIGHTNESS
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""

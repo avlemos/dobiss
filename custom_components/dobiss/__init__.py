@@ -142,6 +142,8 @@ class DobissDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.info("Importing Dobiss installation...")
         await self.dobiss.connect()
         await self.dobiss.importFullInstallation()
+        # Release connection so other clients (e.g., Dobiss Pro app) can use the controller
+        self.dobiss.disconnect()
         _LOGGER.info("Importing Dobiss installation done")
 
     async def async_setup(self):
@@ -164,8 +166,13 @@ class DobissDataUpdateCoordinator(DataUpdateCoordinator):
         # Note: asyncio.TimeoutError and aiohttp.ClientError are already
         # handled by the data update coordinator.
         async with async_timeout.timeout(10):
-            # Note: this is blocking
+            # Connect, poll, and disconnect to avoid holding the controller exclusively
             _LOGGER.debug("Requesting all statuses...")
-            await self.dobiss.requestAllStatus()
+            await self.dobiss.connect()
+            try:
+                await self.dobiss.requestAllStatus()
+            finally:
+                # Ensure we release the connection for other apps
+                self.dobiss.disconnect()
             _LOGGER.debug("Requesting all statuses done")
             return self.dobiss.values

@@ -381,18 +381,29 @@ class DobissSystem:
 
     async def sendAction(self, moduleAddr, outputIndex, action, value=100, delayOn=0xFF, delayOff=0xFF, softDim=0xFF,
                    red=0xFF):
-        """Generic method to send an action to an output."""
+        """Generic method to send an action to an output.
+        Ensures connection is available for the duration of the command and
+        releases it afterwards if we established it here.
+        """
         _LOGGER.debug("sendAction")
-        # Send the request header
-        headerData = bytearray.fromhex("AF 02 FF " + f"{moduleAddr:02x}" + " 00 00 08 01 08 FF FF FF FF FF FF AF")
-        await self.sendData(headerData)
+        established_here = False
+        if not self.connected:
+            await self.connect()
+            established_here = True
+        try:
+            # Send the request header
+            headerData = bytearray.fromhex("AF 02 FF " + f"{moduleAddr:02x}" + " 00 00 08 01 08 FF FF FF FF FF FF AF")
+            await self.sendData(headerData)
 
-        # Note: no additional data is sent back
-        self.receiveResponse(len(headerData), 0)
+            # Note: no additional data is sent back
+            self.receiveResponse(len(headerData), 0)
 
-        # Send the request data
-        requestData = bytes((moduleAddr, outputIndex, action.value, delayOn, delayOff, int(value), softDim, red))
-        await self.sendData(requestData)
+            # Send the request data
+            requestData = bytes((moduleAddr, outputIndex, action.value, delayOn, delayOff, int(value), softDim, red))
+            await self.sendData(requestData)
 
-        # Note: no additional data is sent back
-        self.receiveResponse(len(requestData), 0)
+            # Note: no additional data is sent back
+            self.receiveResponse(len(requestData), 0)
+        finally:
+            if established_here:
+                self.disconnect()
