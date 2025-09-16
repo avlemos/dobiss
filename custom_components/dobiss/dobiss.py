@@ -109,15 +109,15 @@ class DobissSystem:
         _LOGGER.info("Connected to Dobiss system.")
 
     def disconnect(self):
-        """Disconnect from the connected Dobiss system.
-        """
-        _LOGGER.error("disconnecting from Dobiss system")
-
+        """Disconnect from the connected Dobiss system."""
+        _LOGGER.info("Disconnecting from Dobiss system")
         try:
-            self.socket.close()
+            if self.socket:
+                self.socket.close()
         except socket.error as e:
             _LOGGER.error(f"Dobiss socket error {str(e)}")
         finally:
+            self.socket = None
             self._connected = False
 
     async def sendData(self, data):

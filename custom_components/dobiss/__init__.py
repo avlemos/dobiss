@@ -10,7 +10,6 @@ from .dobiss import DobissSystem
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
-from homeassistant.core_config import Config
 # from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 # import homeassistant.helpers.config_validation as cv
@@ -72,9 +71,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     coordinator = hass.data[DOMAIN]["coordinator"]
 
     async def handle_importInstallation(call):
-        print("Importing Dobiss installation")
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, coordinator.importInstallation)
+        _LOGGER.info("Importing Dobiss installation via service call")
+        await coordinator.importInstallation()
 
     hass.services.async_register(DOMAIN, "importInstallation", handle_importInstallation)
 
@@ -148,11 +146,7 @@ class DobissDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def async_setup(self):
         """Setup in the background"""
-        loop = asyncio.get_running_loop()
-        # result = await loop.run_in_executor(None, self.importInstallation)
-        result = await self.importInstallation()
-        print('default thread pool', result)
-
+        await self.importInstallation()
         self.setupCompleted = True
 
     async def _async_update_data(self):

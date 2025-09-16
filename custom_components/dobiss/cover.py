@@ -189,6 +189,18 @@ class HomeAssistantDobissCover(CoordinatorEntity, CoverEntity):
         return self._name
 
     @property
+    def device_info(self):
+        """Return device info to group all cover entities under the Dobiss controller."""
+        host = getattr(self.dobiss, 'host', 'dobiss')
+        port = getattr(self.dobiss, 'port', None)
+        ident = f"{host}:{port}" if port is not None else str(host)
+        return {
+            "identifiers": {(DOMAIN, ident)},
+            "name": f"Dobiss Controller {host}",
+            "manufacturer": "Dobiss",
+        }
+
+    @property
     def unique_id(self):
         return self._cover["unique_id"]
 

@@ -1,6 +1,5 @@
 """Dobiss Plug Control"""
 import logging
-import voluptuous as vol
 from .dobiss import DobissSystem
 from .const import DOMAIN
 
@@ -55,6 +54,18 @@ class HomeAssistantDobissPlug(CoordinatorEntity, SwitchEntity):
         return self._name
 
     @property
+    def device_info(self):
+        """Return device info to group all entities under the Dobiss controller."""
+        host = getattr(self.dobiss, 'host', 'dobiss')
+        port = getattr(self.dobiss, 'port', None)
+        ident = f"{host}:{port}" if port is not None else str(host)
+        return {
+            "identifiers": {(DOMAIN, ident)},
+            "name": f"Dobiss Controller {host}",
+            "manufacturer": "Dobiss",
+        }
+
+    @property
     def device_class(self):
         """Return the class of this device, from component DEVICE_CLASSES."""
         return SwitchDeviceClass.SWITCH
@@ -62,20 +73,25 @@ class HomeAssistantDobissPlug(CoordinatorEntity, SwitchEntity):
     @property
     def is_on(self):
         """Return true if the plug is on."""
-        val = self.coordinator.data[self._plug['moduleAddress']][self._plug['index']]
-        return (val > 0)
+        mod = self._plug['moduleAddress']
+        idx = self._plug['index']
+        mod_vals = self.coordinator.data.get(mod)
+        if not mod_vals or idx >= len(mod_vals):
+            return False
+        val = mod_vals[idx]
+        return val > 0
 
     async def async_turn_on(self, **kwargs):
         """Instruct the plug to switch on.
         """
-        self.dobiss.setOn(self._plug['moduleAddress'], self._plug['index'])
+        await self.dobiss.setOn(self._plug['moduleAddress'], self._plug['index'])
 
         # Poll states
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
         """Instruct the plug to turn off."""
-        self.dobiss.setOff(self._plug['moduleAddress'], self._plug['index'])
+        await self.dobiss.setOff(self._plug['moduleAddress'], self._plug['index'])
 
         # Poll states
         await self.coordinator.async_request_refresh()

@@ -60,19 +60,41 @@ class HomeAssistantDobissLight(CoordinatorEntity, LightEntity):
         return self._name
 
     @property
+    def device_info(self):
+        """Return device info to group all entities under the Dobiss controller."""
+        host = getattr(self.dobiss, 'host', 'dobiss')
+        port = getattr(self.dobiss, 'port', None)
+        ident = f"{host}:{port}" if port is not None else str(host)
+        return {
+            "identifiers": {(DOMAIN, ident)},
+            "name": f"Dobiss Controller {host}",
+            "manufacturer": "Dobiss",
+        }
+
+    @property
     def brightness(self):
         """Return the brightness of the light.
 
         This method is optional. Removing it indicates to Home Assistant
         that brightness is not supported for this light.
         """
-        val = self.coordinator.data[self._light['moduleAddress']][self._light['index']]
+        mod = self._light['moduleAddress']
+        idx = self._light['index']
+        mod_vals = self.coordinator.data.get(mod)
+        if not mod_vals or idx >= len(mod_vals):
+            return 0
+        val = mod_vals[idx]
         return int(val * 255 / 100)
 
     @property
     def is_on(self):
         """Return true if light is on."""
-        val = self.coordinator.data[self._light['moduleAddress']][self._light['index']]
+        mod = self._light['moduleAddress']
+        idx = self._light['index']
+        mod_vals = self.coordinator.data.get(mod)
+        if not mod_vals or idx >= len(mod_vals):
+            return False
+        val = mod_vals[idx]
         return val > 0
 
     async def async_turn_on(self, **kwargs):
