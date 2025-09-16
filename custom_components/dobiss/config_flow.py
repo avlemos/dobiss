@@ -28,15 +28,35 @@ class DobissConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return await setupStep(self, user_input, True, "user")
 
 
-# TODO Options Flow
-# @staticmethod
-# @callback
-# def async_get_options_flow(config_entry):
-#     return DobissOptionsFlowHandler()
+from homeassistant.core import callback
 
-# class DobissOptionsFlowHandler(config_entries.OptionsFlow):
-#     async def async_step_init(self, user_input=None):
-#         return await setupStep(self, user_input, False, "init")
+# Options Flow
+@staticmethod
+@callback
+def async_get_options_flow(config_entry):
+    return DobissOptionsFlowHandler(config_entry)
+
+
+class DobissOptionsFlowHandler(config_entries.OptionsFlow):
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            # Store only options (do not modify data)
+            return self.async_create_entry(title="", data={
+                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL]
+            })
+
+        # Default to existing option, then data, then global default
+        current = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+        data_schema = {
+            vol.Optional(CONF_SCAN_INTERVAL, default=current): int
+        }
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(data_schema))
 
 
 async def setupStep(flow, user_input, check_unique=True, step_name="user"):

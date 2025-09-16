@@ -55,13 +55,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up Dobiss from a config entry."""
     host = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]
-    update_interval = timedelta(seconds=entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
 
-    _LOGGER.info(f"Setting up Dobiss Control entry with data {str(entry.data)}")
+    # Prefer options (set via Options Flow), then data, then default
+    scan_seconds = entry.options.get(CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+    update_interval = timedelta(seconds=scan_seconds)
+
+    _LOGGER.info(f"Setting up Dobiss Control entry with data {str(entry.data)} and options {str(entry.options)}")
 
     # Create from config entry
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data;
+    hass.data[DOMAIN][entry.entry_id] = entry.data
 
     await setupCoordinator(hass, host, port, update_interval)
 
@@ -75,6 +78,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         await coordinator.importInstallation()
 
     hass.services.async_register(DOMAIN, "importInstallation", handle_importInstallation)
+
+    # Listen for options updates to adjust polling interval without re-adding
+    async def _update_listener(hass: HomeAssistant, updated_entry: ConfigEntry):
+        new_scan_seconds = updated_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            updated_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+        new_interval = timedelta(seconds=new_scan_seconds)
+        if coordinator.update_interval != new_interval:
+            _LOGGER.info(f"Updating Dobiss polling interval to {new_scan_seconds}s via Options")
+            coordinator.update_interval = new_interval
+
+    entry.async_on_unload(entry.add_update_listener(_update_listener))
 
     return True
 
