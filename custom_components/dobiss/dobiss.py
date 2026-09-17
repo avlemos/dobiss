@@ -2,7 +2,6 @@
 Helper module for communicating with a Dobiss home automation system.
 """
 
-import socket
 import logging
 import asyncio
 from enum import IntEnum
@@ -23,10 +22,15 @@ class DobissSystem:
         self._port = port
         self._connected = False
 
-        self.socket = None
-        # self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self.socket.settimeout(TIMEOUT)
+        self._reader = None
+        self._writer = None
         self.recvBuffer = bytearray()
+
+        # Serializes access to the single TCP connection: the protocol is a
+        # strict request/response exchange, so concurrent callers (e.g. a
+        # status poll racing a light toggle) must not interleave their
+        # sendData/receiveResponse pairs.
+        self._lock = asyncio.Lock()
 
         self.availableModules = []
         self.modules = {}
@@ -83,29 +87,24 @@ class DobissSystem:
         retries = 0
         while not self._connected and retries < MAX_NUM_RETRIES:
             try:
-                _LOGGER.info(f"connect through connect_logic")
-                self.connect_logic()
-            except socket.error as e:
+                _LOGGER.info("connect through connect_logic")
+                await self.connect_logic()
+            except OSError as e:
                 _LOGGER.error(f"Dobiss socket error while trying to connect: {str(e)}")
-                # self.disconnect()
                 self._connected = False
                 retries += 1
                 if retries < MAX_NUM_RETRIES:
                     _LOGGER.debug(f"Retrying in {retry_delay} seconds...")
-                    # time.sleep(retry_delay)
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
-                    # self.connect_logic()
                 else:
                     _LOGGER.error("Maximum retry attempts reached. Connection failed.")
                     break
 
-    def connect_logic(self):
+    async def connect_logic(self):
         _LOGGER.info(f"Connecting to Dobiss system at IP {self.host} and port {self.port}")
-        # self.socket.connect((self.host, self.port))
-        self.socket = socket.create_connection((self.host, self.port))
+        self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
         self._connected = True
-        # self.socket.settimeout(None)
         _LOGGER.info("Connected to Dobiss system.")
 
     def disconnect(self):
@@ -121,40 +120,31 @@ class DobissSystem:
             self._connected = False
 
     async def sendData(self, data):
-        _LOGGER.debug(f"sendData {str(data)}")
         """Send data to a Dobiss system.
-           Keeps trying to send the data until it is successful, reconnecting with the system if necessary.
+           Reconnects and retries once if sending fails.
         """
-        # dataSent = False
-        retry = True
-        num_retries = 0
+        _LOGGER.debug(f"sendData {str(data)}")
 
-        if self.socket is None:
-            _LOGGER.debug(f"We are not ready yet to sendData")
+        if self._writer is None:
+            _LOGGER.debug("We are not ready yet to sendData")
             return False
 
-        # while retry:
         try:
-            self.socket.sendall(data)
-            # retry = False
+            self._writer.write(data)
+            await self._writer.drain()
             return True
-        except socket.error as e:
+        except OSError as e:
             _LOGGER.error(f"Dobiss socket error on sending data {str(e)}")
             await self.reconnect(data)
-            # num_retries += 1
-            # if num_retries >= MAX_NUM_RETRIES:
-            #     return False
-            # time.sleep(RETRY_DELAY)  # Introduce a delay between retries # HA does not allow this
-        # return False
 
     async def reconnect(self, data):
-        _LOGGER.info(f"Dobiss for the reconnect")
-        self.disconnect()
+        _LOGGER.info("Dobiss for the reconnect")
+        await self.disconnect()
         await self.connect()
         if data:
             await self.sendData(data)
 
-    def receiveResponse(self, sentDataSize, responseSize):
+    async def receiveResponse(self, sentDataSize, responseSize):
         """Receive response"""
 
         # Receive until we have enough data
@@ -165,17 +155,20 @@ class DobissSystem:
 
         numRetries = 0
 
-        while (len(self.recvBuffer) < totalSize) and (numRetries < MAX_NUM_RETRIES) and self.socket is not None:
+        while (len(self.recvBuffer) < totalSize) and (numRetries < MAX_NUM_RETRIES) and self._reader is not None:
             try:
-                received_data = self.socket.recv(RECV_SIZE)
+                received_data = await self._reader.read(RECV_SIZE)
 
                 if received_data:
                     self.recvBuffer += received_data
-                    # print(f"Received from socket. Buffer is now length {len(self.recvBuffer)}")
+                else:
+                    # Peer closed the connection.
+                    numRetries += 1
+                    await asyncio.sleep(RETRY_DELAY)
 
-            except socket.error as e:
-                print(f"Dobiss socket error while receiving data: {str(e)}")
-                return []
+            except OSError as e:
+                _LOGGER.error(f"Dobiss socket error while receiving data: {str(e)}")
+                return bytearray()
 
         # We first receive the original packet back
         # TODO Actually check the content
@@ -211,12 +204,13 @@ class DobissSystem:
     async def importInstallation(self):
         """Import the installation."""
         data = bytearray.fromhex("AF 0B 00 00 30 00 10 01 10 FF FF FF FF FF FF AF")
-        await self.sendData(data)
 
-        installationData = self.receiveResponse(len(data), 16)
+        async with self._lock:
+            await self.sendData(data)
+            installationData = await self.receiveResponse(len(data), 16)
 
         if len(installationData) != 16:
-            print(
+            _LOGGER.error(
                 f"Invalid data received trying to import installation: received {len(installationData)} bytes instead of 16")
             return
 
@@ -232,7 +226,7 @@ class DobissSystem:
                 channelAddr = i + 1
                 self.availableModules.append(channelAddr)
 
-        print("Available modules: " + str(self.availableModules))
+        _LOGGER.debug("Available modules: " + str(self.availableModules))
 
     class ModuleType(IntEnum):
         """The type of module."""
@@ -246,12 +240,13 @@ class DobissSystem:
         # Import the module
         # data = bytearray.fromhex("AF 10 FF " + chr(moduleAddr).encode('hex') + " 00 00 10 01 10 FF FF FF FF FF FF AF")
         data = bytearray.fromhex("AF 10 FF " + f"{moduleAddr:02x}" + " 00 00 10 01 10 FF FF FF FF FF FF AF")
-        await self.sendData(data)
 
-        moduleData = self.receiveResponse(len(data), 16)
+        async with self._lock:
+            await self.sendData(data)
+            moduleData = await self.receiveResponse(len(data), 16)
 
         if len(moduleData) != 16:
-            print(f"Invalid data received trying to import module: received {len(moduleData)} bytes instead of 16")
+            _LOGGER.error(f"Invalid data received trying to import module: received {len(moduleData)} bytes instead of 16")
             return
 
         # moduleAddr = ord(moduleData[0])
@@ -277,7 +272,7 @@ class DobissSystem:
             'outputCount': outputCount
         }
 
-        print(f"Module {moduleAddr} imported: " + str(self.modules[moduleAddr]))
+        _LOGGER.debug(f"Module {moduleAddr} imported: " + str(self.modules[moduleAddr]))
 
     class OutputType(IntEnum):
         """The type of output."""
@@ -294,15 +289,16 @@ class DobissSystem:
         # data = bytearray.fromhex("AF 10 " + chr(moduleType).encode('hex') +  + chr(moduleAddr).encode('hex') + " 01 00 20 " + chr(outputCount).encode('hex') + " 20 FF FF FF FF FF FF AF")
         data = bytearray.fromhex(
             "AF 10 " + f"{moduleType.value:02x}" + f"{moduleAddr:02x}" + " 01 00 20 " + f"{outputCount:02x}" + " 20 FF FF FF FF FF FF AF")
-        await self.sendData(data)
 
         # <module.outputCount> lines of 32 bytes
         # Output names of 30 characters; convert byte array to string;
         # data[30] = icon type (0=light, 1=plug, 2=fan, 3=up, 4=down); data[31] = group index
-        outputsData = self.receiveResponse(len(data), 32 * outputCount)
+        async with self._lock:
+            await self.sendData(data)
+            outputsData = await self.receiveResponse(len(data), 32 * outputCount)
 
         if len(outputsData) != 32 * outputCount:
-            print(
+            _LOGGER.error(
                 f"Invalid data received trying to import module: received {len(outputsData)} bytes instead of {32 * outputCount}")
             return
 
@@ -321,7 +317,7 @@ class DobissSystem:
                 'groupIndex': groupIndex
             })
 
-            print(f"Output imported: " + str(self.outputs[len(self.outputs) - 1]))
+            _LOGGER.debug(f"Output imported: " + str(self.outputs[len(self.outputs) - 1]))
 
     async def requestStatus(self, moduleAddr, moduleType, outputCount):
         """Request the status of all outputs of a module."""
@@ -329,12 +325,13 @@ class DobissSystem:
         # Request the status
         data = bytearray.fromhex(
             "AF 01 " + f"{moduleType.value:02x}" + f"{moduleAddr:02x}" + " 00 00 00 01 00 FF FF FF FF FF FF AF")
-        await self.sendData(data)
 
-        statusData = self.receiveResponse(len(data), 16)
+        async with self._lock:
+            await self.sendData(data)
+            statusData = await self.receiveResponse(len(data), 16)
 
         if len(statusData) != 16:
-            print(f"Invalid data received trying to import module: received {len(statusData)} bytes instead of 16")
+            _LOGGER.error(f"Invalid data received trying to import module: received {len(statusData)} bytes instead of 16")
             return
 
         if not moduleAddr in self.values:
