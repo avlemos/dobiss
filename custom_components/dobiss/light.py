@@ -40,6 +40,10 @@ class HomeAssistantDobissLight(CoordinatorEntity, LightEntity):
         self._name = light['name']
 
     @property
+    def _is_dimmer(self):
+        return self.dobiss.modules[self._light['moduleAddress']]['type'] != DobissSystem.ModuleType.Relais
+
+    @property
     def supported_features(self):
         # Brightness is not a feature flag in HA; it is declared via supported_color_modes
         # Only expose valid feature flags here.
